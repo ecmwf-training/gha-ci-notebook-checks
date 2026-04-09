@@ -1,4 +1,4 @@
-## c3s-reusable workflows
+## gha-ci-notebook-checks
 
 This repository contains reusable GitHub Actions workflows for C3S projects. There is currently one CI workflow for Jupyter Notebook QA automation.
 
@@ -48,7 +48,7 @@ on:
 
 jobs:
   notebook-qa:
-    uses: recmanj-org/c3s-reusable-workflows/.github/workflows/notebook-qa.yml@main
+    uses: ecmwf-training/gha-ci-notebook-checks/.github/workflows/notebook-qa.yml@main
     with:
       notebooks: ${{ inputs.notebooks || '' }}
     secrets: inherit
@@ -62,7 +62,7 @@ This sets up automated checks on new pull requests and merges/pushes into `devel
 The action responsible for notebook execution allows setting a `cdsapi` key via `CDSAPI_KEY` secret set either on repository or organisation level.
 
 
-### How to setup c3s-reusable-workflows repository in GitHub organisation
+### How to setup gha-ci-notebook-checks repository in GitHub organisation
 
 1. Fork this repository into your organisation
 2. Leave the fork network in the newly forked repository settings
