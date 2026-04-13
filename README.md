@@ -52,10 +52,10 @@ on:
   workflow_dispatch:
     inputs:
       notebooks:
-        description: 'Comma-separated list of notebook paths to check (e.g., ./notebook1.ipynb,./folder/notebook2.ipynb). Leave empty to check all notebooks.'
+        description: "Space-separated list of notebook paths to check (default: all *.ipynb)"
         required: false
         type: string
-        default: ''
+        default: ""
 
 jobs:
   notebook-qa:
