@@ -2,133 +2,113 @@
 """
 Metadata Checker for Jupyter Notebooks
 
-Checks for version date information in notebooks or README files (Criterion 1.2.6).
+Checks that notebooks have a 'Last updated' date in the first markdown cell (Criterion 1.2.6).
+
+Expected format in first markdown cell:
+    **Last updated:** YYYY-MM-DD
+
+Usage:
+    python metadata_checker.py [--config CONFIG] notebook1.ipynb notebook2.ipynb ...
 """
 
 import argparse
-import json
 import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
-from utils import read_notebook, extract_cell_source, write_results
+from qa_config import filter_notebooks, is_check_disabled, load_config
+from utils import extract_cell_source, read_notebook
 
 
-def check_metadata(notebook_path: str, check_readme: bool = True) -> str:
+def check_metadata(notebook_path: str) -> tuple[str, str | None]:
     """
-    Check for version date metadata in a notebook.
+    Check for 'Last updated' date in a notebook's first markdown cell.
 
-    Args:
-        notebook_path: Path to the notebook file
-        check_readme: Whether to check README.md if not found in notebook
-
-    Returns:
-        Result status: "success" or "failure"
+    Returns: ("success"|"failure"|"warning", date_found_or_None)
     """
-    # Date patterns to search for
-    date_patterns = [
-        r'last\s+updated:?\s*(\d{4}-\d{2}-\d{2})',
-        r'version:?\s*[\d.]+\s*\((\d{4}-\d{2}-\d{2})\)',
-        r'modified:?\s*(\d{4}-\d{2}-\d{2})',
-        r'date:?\s*(\d{4}-\d{2}-\d{2})',
-        r'updated:?\s*(\d{4}-\d{2}-\d{2})',
-    ]
+    date_pattern = r"\*\*Last updated:\*\*\s*(\d{4}-\d{2}-\d{2})"
 
-    nb_data = read_notebook(notebook_path)
+    try:
+        nb_data = read_notebook(notebook_path)
+    except Exception as e:
+        print(f"❌ Error reading {notebook_path}: {e}")
+        return ("failure", None)
 
-    found_date = None
-    found_location = None
+    cells = nb_data.get("cells", [])
 
-    # Check notebook metadata
-    metadata = nb_data.get('metadata', {})
-    for field in ['date', 'modified', 'version', 'last_updated']:
-        if field in metadata:
-            value = str(metadata[field])
-            # Try to extract date from the metadata field
-            for pattern in date_patterns:
-                match = re.search(pattern, value, re.IGNORECASE)
-                if match:
-                    found_date = match.group(1)
-                    found_location = f"metadata.{field}"
-                    break
-            if found_date:
-                break
+    # Check all markdown cells before the first code cell
+    for cell in cells:
+        if cell.get("cell_type") == "code":
+            break  # Stop searching once we hit code
+        if cell.get("cell_type") == "markdown":
+            source = extract_cell_source(cell)
+            match = re.search(date_pattern, source)
+            if match:
+                date = match.group(1)
+                print(f"✅ {notebook_path}: Last updated {date}")
+                return ("success", date)
 
-    # Check markdown cells if not found in metadata
-    if not found_date:
-        for cell_idx, cell in enumerate(nb_data.get('cells', [])):
-            if cell.get('cell_type') == 'markdown':
-                source = extract_cell_source(cell)
+    # Fallback: check README.md in same directory
+    readme_path = Path(notebook_path).parent / "README.md"
+    if readme_path.exists():
+        try:
+            readme_text = readme_path.read_text(encoding="utf-8")
+            match = re.search(date_pattern, readme_text)
+            if match:
+                date = match.group(1)
+                print(f"✅ {notebook_path}: Last updated {date} (from README.md)")
+                return ("success", date)
+        except Exception:
+            pass
 
-                # Search for date patterns
-                for pattern in date_patterns:
-                    match = re.search(pattern, source, re.IGNORECASE)
-                    if match:
-                        found_date = match.group(1)
-                        found_location = f"markdown cell {cell_idx}"
-                        break
-
-                if found_date:
-                    break
-
-    # Check for README.md if not found in notebook
-    if not found_date and check_readme:
-        readme_path = Path(notebook_path).parent / "README.md"
-        if readme_path.exists():
-            try:
-                with open(readme_path, 'r', encoding='utf-8') as f:
-                    readme_content = f.read()
-
-                for pattern in date_patterns:
-                    match = re.search(pattern, readme_content, re.IGNORECASE)
-                    if match:
-                        found_date = match.group(1)
-                        found_location = "README.md"
-                        break
-            except Exception:
-                pass
-
-    if found_date:
-        print(f"✅ Found version date for {notebook_path}: {found_date} (in {found_location})")
-        return "success"
-    else:
-        print(f"❌ No version date found for {notebook_path}")
-        print("   Add 'Last updated: YYYY-MM-DD' to notebook markdown or README.md")
-        return "failure"
+    print(f"❌ {notebook_path}: No 'Last updated' date found")
+    print("")
+    print("   To fix this, add the following to the FIRST markdown cell of your notebook:")
+    print("")
+    print("       **Last updated:** YYYY-MM-DD")
+    print("")
+    print("   Example:")
+    print("       **Last updated:** 2025-01-15")
+    print("")
+    return ("failure", None)
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Check for version date metadata in notebooks')
-    parser.add_argument('--notebooks', required=True, help='JSON array of notebook paths')
-    parser.add_argument('--output-dir', required=True, help='Directory to write results')
-    parser.add_argument('--check-readme', action='store_true', default=True,
-                        help='Check README.md if not found in notebook')
+    parser = argparse.ArgumentParser(
+        description="Check for Last updated metadata in Jupyter notebooks"
+    )
+    parser.add_argument("notebooks", nargs="*", help="Notebook files to check")
+    parser.add_argument(
+        "--config",
+        default=".github/notebook-qa.yml",
+        help="Path to QA configuration file (default: .github/notebook-qa.yml)",
+    )
     args = parser.parse_args()
 
-    try:
-        notebooks = json.loads(args.notebooks)
-    except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON format for notebooks: {e}")
-        sys.exit(1)
+    config = load_config(args.config)
 
-    notebook_results = {}
-    overall_result = 0
+    # Check if metadata check is globally disabled
+    if is_check_disabled(config, "metadata"):
+        print("Metadata check is disabled by configuration")
+        sys.exit(0)
 
+    # Filter notebooks based on config
+    notebooks = filter_notebooks(config, "metadata", args.notebooks)
+
+    if not notebooks:
+        print("All notebooks skipped by configuration")
+        sys.exit(0)
+
+    results = []
     for notebook in notebooks:
-        if not notebook:
-            continue
+        result, _ = check_metadata(notebook)
+        results.append(result)
 
-        print(f"Processing {notebook} with metadata_checker")
-        result = check_metadata(notebook, args.check_readme)
-        notebook_results[notebook] = result
-
-        if result == "failure":
-            overall_result = 1
-
-    write_results("metadata_checker", notebook_results, args.output_dir)
-
-    sys.exit(overall_result)
+    # Exit 0 even for warnings (non-blocking check)
+    # Change to exit(1) if this should be a blocking check
+    if "failure" in results:
+        sys.exit(1)
+    sys.exit(0)
 
 
 if __name__ == "__main__":
