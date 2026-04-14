@@ -52,10 +52,10 @@ on:
   workflow_dispatch:
     inputs:
       notebooks:
-        description: 'Comma-separated list of notebook paths to check (e.g., ./notebook1.ipynb,./folder/notebook2.ipynb). Leave empty to check all notebooks.'
+        description: "Space-separated list of notebook paths to check (default: all *.ipynb)"
         required: false
         type: string
-        default: ''
+        default: ""
 
 jobs:
   notebook-qa:
@@ -80,6 +80,7 @@ disabled_checks:
 
 # Notebooks to skip entirely (all checks), supports glob patterns
 skip_notebooks:
+  - "./draft.ipynb" # To skip notebooks at the top level include "./" to ensure that the path is resolved
   - "notebooks/draft.ipynb"
   - "notebooks/experimental/**"
 
