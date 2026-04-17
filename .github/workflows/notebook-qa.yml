@@ -47,6 +47,8 @@ on:
         required: false
       JIRA_PROJECT_KEY:
         required: false
+      CDSAPI_KEY:
+        required: false
 
 env:
   QA_OUTPUT_DIR: qa_outputs${{ github.run_id }}
